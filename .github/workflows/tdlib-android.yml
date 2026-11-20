@@ -1,0 +1,56 @@
+name: TDLib Android ARM64
+on: [workflow_dispatch]
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      TDLIB_REV: 03220f6b3043c6fd7785fbf0901d63f19ad19974
+      NDK: 28.2.13676358
+      OPENSSL: openssl-3.5.5
+      CMAKE_BUILD_PARALLEL_LEVEL: 2
+    steps:
+      - name: Prepare Android build tools
+        run: |
+          set -euo pipefail
+          df -h "$RUNNER_TEMP"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gperf php-cli ninja-build zlib1g-dev
+          sdkmanager "ndk;$NDK" "cmake;3.22.1"
+
+      - name: Build the official JSONJava interface
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsSL "https://codeload.github.com/tdlib/td/tar.gz/$TDLIB_REV" -o tdlib-source.tar.gz
+          tar -xzf tdlib-source.tar.gz
+          cd "td-$TDLIB_REV/example/android"
+
+          sed -i 's/^for ABI in arm64-v8a armeabi-v7a x86_64 x86 ; do$/for ABI in arm64-v8a ; do/' build-openssl.sh
+          grep -qx 'for ABI in arm64-v8a ; do' build-openssl.sh
+          sed -i 's/-DCMAKE_BUILD_TYPE=RelWithDebInfo/-DCMAKE_BUILD_TYPE=Release/' build-tdlib.sh
+
+          bash build-openssl.sh "$ANDROID_SDK_ROOT" "$NDK" "$RUNNER_TEMP/openssl-android" "$OPENSSL"
+          bash build-tdlib.sh "$ANDROID_SDK_ROOT" "$NDK" "$RUNNER_TEMP/openssl-android" c++_static JSONJava 26 arm64-v8a
+
+          out="$RUNNER_TEMP/tdlib-android-arm64"
+          mkdir -p "$out/libs/arm64-v8a" "$out/java/org/drinkless/tdlib"
+          install -m 644 tdlib/libs/arm64-v8a/libtdjsonjava.so "$out/libs/arm64-v8a/"
+          install -m 644 tdlib/java/org/drinkless/tdlib/JsonClient.java "$out/java/org/drinkless/tdlib/"
+          install -m 644 ../../LICENSE_1_0.txt "$out/LICENSE-tdlib.txt"
+          curl -fsSL "https://raw.githubusercontent.com/openssl/openssl/$OPENSSL/LICENSE.txt" -o "$out/LICENSE-openssl.txt"
+          printf '%s\n' "$TDLIB_REV" > "$out/TDLIB_REVISION"
+
+          readelf -h "$out/libs/arm64-v8a/libtdjsonjava.so" | grep AArch64
+          cd "$out"
+          sha256sum libs/arm64-v8a/libtdjsonjava.so java/org/drinkless/tdlib/JsonClient.java > SHA256SUMS
+
+      - name: Upload the Android library
+        uses: actions/upload-artifact@v4
+        with:
+          name: tdlib-android-arm64
+          path: ${{ runner.temp }}/tdlib-android-arm64/
+          if-no-files-found: error
