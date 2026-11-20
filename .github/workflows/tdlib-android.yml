@@ -19,8 +19,7 @@ jobs:
           df -h "$RUNNER_TEMP"
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends gperf php-cli ninja-build zlib1g-dev
-          sdkmanager "ndk;$NDK" "cmake;3.22.1"
-
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK" "cmake;3.22.1"
       - name: Build the official JSONJava interface
         run: |
           set -euo pipefail
